@@ -1,158 +1,354 @@
-//your JS code here. If required.
+// Soundbar Application JavaScript
 document.addEventListener('DOMContentLoaded', function() {
-    // Sound configuration
-    const sounds = [
-        { name: 'applause', icon: 'fas fa-hands-clapping', color: '#4cc9f0' },
-        { name: 'boo', icon: 'fas fa-face-angry', color: '#f72585' },
-        { name: 'gasp', icon: 'fas fa-face-surprise', color: '#7209b7' },
-        { name: 'tada', icon: 'fas fa-party-horn', color: '#f8961e' },
-        { name: 'victory', icon: 'fas fa-trophy', color: '#ffd166' },
-        { name: 'wrong', icon: 'fas fa-circle-xmark', color: '#ef233c' }
-    ];
-    
-    // Elements
+    // DOM Elements
     const buttonsContainer = document.getElementById('buttons');
-    const stopButton = document.getElementById('stop-button');
+    const stopButton = document.getElementById('stop-all');
     const volumeSlider = document.getElementById('volume-slider');
     const volumeValue = document.getElementById('volume-value');
-    const currentSoundElement = document.getElementById('current-sound');
+    const currentSoundDisplay = document.getElementById('current-sound');
+    const visualizer = document.getElementById('visualizer');
+    const soundCountElement = document.getElementById('sound-count');
     
-    // Audio context and state
+    // Sound configuration
+    const sounds = [
+        {
+            id: 'applause',
+            name: 'Applause',
+            icon: 'fas fa-hands-clapping',
+            color: '#667eea'
+        },
+        {
+            id: 'boo',
+            name: 'Boo',
+            icon: 'fas fa-face-angry',
+            color: '#ff416c'
+        },
+        {
+            id: 'gasp',
+            name: 'Gasp',
+            icon: 'fas fa-face-surprise',
+            color: '#f093fb'
+        },
+        {
+            id: 'tada',
+            name: 'Tada',
+            icon: 'fas fa-party-horn',
+            color: '#4facfe'
+        },
+        {
+            id: 'victory',
+            name: 'Victory',
+            icon: 'fas fa-trophy',
+            color: '#00f2fe'
+        },
+        {
+            id: 'wrong',
+            name: 'Wrong',
+            icon: 'fas fa-circle-xmark',
+            color: '#ff7e5f'
+        }
+    ];
+    
+    // Audio context and variables
+    let audioContext;
     let currentAudio = null;
     let isPlaying = false;
-    let currentSoundName = '';
+    let currentSoundId = null;
     let volume = 0.7; // Default volume (70%)
     
-    // Create sound buttons
-    sounds.forEach(sound => {
-        const button = document.createElement('button');
-        button.className = 'btn';
-        button.id = sound.name;
-        button.innerHTML = `
-            <i class="${sound.icon}"></i>
-            <span>${sound.name.charAt(0).toUpperCase() + sound.name.slice(1)}</span>
-        `;
+    // Initialize the application
+    function init() {
+        console.log('Soundbar Application Initializing...');
         
-        // Add click event to play/stop sound
-        button.addEventListener('click', () => toggleSound(sound.name, sound.icon));
+        // Create sound buttons
+        createSoundButtons();
         
-        buttonsContainer.appendChild(button);
-    });
+        // Initialize volume
+        updateVolumeDisplay();
+        
+        // Set up event listeners
+        setupEventListeners();
+        
+        // Update sound count
+        soundCountElement.textContent = `${sounds.length} sounds available`;
+        
+        console.log('Soundbar Application Ready!');
+    }
     
-    // Initialize volume display
-    volumeValue.textContent = `${volume * 100}%`;
-    
-    // Volume slider event
-    volumeSlider.addEventListener('input', function() {
-        volume = this.value / 100;
-        volumeValue.textContent = `${this.value}%`;
+    // Create sound buttons dynamically
+    function createSoundButtons() {
+        buttonsContainer.innerHTML = '';
         
-        // Update volume of currently playing audio
-        if (currentAudio) {
-            currentAudio.volume = volume;
+        sounds.forEach(sound => {
+            const button = document.createElement('button');
+            button.className = 'btn';
+            button.id = `btn-${sound.id}`;
+            button.dataset.soundId = sound.id;
+            button.dataset.soundName = sound.name;
+            
+            button.innerHTML = `
+                <i class="${sound.icon} sound-icon"></i>
+                <span>${sound.name}</span>
+            `;
+            
+            // Set button color
+            button.style.background = `linear-gradient(135deg, ${sound.color}, ${darkenColor(sound.color, 30)})`;
+            
+            buttonsContainer.appendChild(button);
+        });
+        
+        console.log(`Created ${sounds.length} sound buttons`);
+    }
+    
+    // Set up all event listeners
+    function setupEventListeners() {
+        // Sound button click events
+        document.querySelectorAll('.btn').forEach(button => {
+            button.addEventListener('click', function() {
+                const soundId = this.dataset.soundId;
+                const soundName = this.dataset.soundName;
+                playSound(soundId, soundName, this);
+            });
+        });
+        
+        // Stop button click event
+        stopButton.addEventListener('click', stopAllSounds);
+        
+        // Volume slider change event
+        volumeSlider.addEventListener('input', function() {
+            volume = this.value / 100;
+            updateVolumeDisplay();
+            
+            // Update current audio volume if playing
+            if (currentAudio) {
+                currentAudio.volume = volume;
+            }
+        });
+        
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(event) {
+            // Number keys 1-6 for sounds
+            if (event.key >= '1' && event.key <= '6') {
+                const index = parseInt(event.key) - 1;
+                if (index < sounds.length) {
+                    const sound = sounds[index];
+                    const button = document.getElementById(`btn-${sound.id}`);
+                    if (button) {
+                        playSound(sound.id, sound.name, button);
+                    }
+                }
+            }
+            
+            // Spacebar to stop
+            if (event.key === ' ' || event.key === 'Spacebar') {
+                event.preventDefault();
+                stopAllSounds();
+            }
+            
+            // Escape to stop
+            if (event.key === 'Escape') {
+                stopAllSounds();
+            }
+            
+            // Arrow keys for volume
+            if (event.key === 'ArrowUp') {
+                volumeSlider.value = Math.min(100, parseInt(volumeSlider.value) + 10);
+                volumeSlider.dispatchEvent(new Event('input'));
+            }
+            
+            if (event.key === 'ArrowDown') {
+                volumeSlider.value = Math.max(0, parseInt(volumeSlider.value) - 10);
+                volumeSlider.dispatchEvent(new Event('input'));
+            }
+        });
+    }
+    
+    // Play sound function
+    function playSound(soundId, soundName, buttonElement) {
+        // Stop current sound if playing
+        if (isPlaying && currentAudio) {
+            currentAudio.pause();
+            currentAudio.currentTime = 0;
+            
+            // Remove active class from previous button
+            if (currentSoundId) {
+                const prevButton = document.getElementById(`btn-${currentSoundId}`);
+                if (prevButton) prevButton.classList.remove('active');
+            }
         }
-    });
-    
-    // Stop button event
-    stopButton.addEventListener('click', stopAllSounds);
-    
-    // Function to toggle sound playback
-    function toggleSound(soundName, iconClass) {
-        const button = document.getElementById(soundName);
         
-        // If this sound is already playing, stop it
-        if (currentSoundName === soundName && isPlaying) {
+        // If clicking the same sound that's playing, stop it
+        if (isPlaying && currentSoundId === soundId) {
             stopAllSounds();
             return;
         }
         
-        // Stop any currently playing sound
-        if (currentAudio) {
-            currentAudio.pause();
-            currentAudio.currentTime = 0;
-            document.querySelectorAll('.btn').forEach(btn => btn.classList.remove('active'));
-        }
+        // Create audio element
+        const audio = new Audio(`sounds/${soundId}.mp3`);
         
-        // Play the selected sound
-        playSound(soundName, iconClass);
-    }
-    
-    // Function to play a sound
-    function playSound(soundName, iconClass) {
-        // Create audio element (assuming sounds are in a 'sounds' folder)
-        currentAudio = new Audio(`sounds/${soundName}.mp3`);
-        currentAudio.volume = volume;
-        
-        // Update UI
-        currentSoundName = soundName;
-        isPlaying = true;
-        currentSoundElement.textContent = `Playing: ${soundName.charAt(0).toUpperCase() + soundName.slice(1)}`;
-        document.getElementById(soundName).classList.add('active');
+        // Set volume
+        audio.volume = volume;
         
         // Play the sound
-        currentAudio.play();
-        
-        // When sound ends, update UI
-        currentAudio.addEventListener('ended', () => {
-            isPlaying = false;
-            currentSoundName = '';
-            document.getElementById(soundName).classList.remove('active');
-            currentSoundElement.textContent = 'No sound playing';
-        });
-        
-        // Handle errors
-        currentAudio.addEventListener('error', () => {
-            currentSoundElement.textContent = `Error: Could not load ${soundName}.mp3`;
-            console.error(`Error loading sound: ${soundName}.mp3`);
-            isPlaying = false;
-            currentSoundName = '';
-            document.getElementById(soundName).classList.remove('active');
-        });
+        audio.play()
+            .then(() => {
+                // Update state
+                currentAudio = audio;
+                currentSoundId = soundId;
+                isPlaying = true;
+                
+                // Update UI
+                currentSoundDisplay.textContent = soundName;
+                currentSoundDisplay.style.color = getComputedStyle(buttonElement).backgroundImage;
+                
+                // Add active class to button
+                buttonElement.classList.add('active');
+                
+                // Start visualizer
+                visualizer.classList.add('playing');
+                
+                // Update button text to "Stop"
+                const span = buttonElement.querySelector('span');
+                span.textContent = 'Stop';
+                
+                console.log(`Playing: ${soundName}`);
+                
+                // Handle audio end
+                audio.onended = function() {
+                    stopAllSounds();
+                };
+                
+                // Handle audio error
+                audio.onerror = function() {
+                    console.error(`Error playing sound: ${soundName}`);
+                    currentSoundDisplay.textContent = `Error loading: ${soundName}`;
+                    currentSoundDisplay.style.color = '#ff416c';
+                    stopAllSounds();
+                };
+            })
+            .catch(error => {
+                console.error('Error playing audio:', error);
+                currentSoundDisplay.textContent = 'Error playing sound';
+                currentSoundDisplay.style.color = '#ff416c';
+                
+                // Show error message
+                alert(`Error playing ${soundName}. Make sure the sound file exists in the "sounds" folder.`);
+            });
     }
     
-    // Function to stop all sounds
+    // Stop all sounds function
     function stopAllSounds() {
         if (currentAudio) {
             currentAudio.pause();
             currentAudio.currentTime = 0;
+            currentAudio = null;
         }
         
-        // Reset UI state
+        // Update state
         isPlaying = false;
-        currentSoundName = '';
-        currentSoundElement.textContent = 'No sound playing';
-        document.querySelectorAll('.btn').forEach(btn => btn.classList.remove('active'));
+        currentSoundId = null;
+        
+        // Update UI
+        currentSoundDisplay.textContent = 'No sound playing';
+        currentSoundDisplay.style.color = '#00fff5';
+        
+        // Stop visualizer
+        visualizer.classList.remove('playing');
+        
+        // Remove active class from all buttons
+        document.querySelectorAll('.btn').forEach(button => {
+            button.classList.remove('active');
+            
+            // Reset button text to sound name
+            const soundId = button.dataset.soundId;
+            const sound = sounds.find(s => s.id === soundId);
+            if (sound) {
+                const span = button.querySelector('span');
+                if (span) span.textContent = sound.name;
+            }
+        });
+        
+        console.log('All sounds stopped');
     }
     
-    // Add keyboard shortcuts
-    document.addEventListener('keydown', function(event) {
-        // Map number keys 1-6 to sounds
-        const keyMap = {
-            '1': 'applause',
-            '2': 'boo',
-            '3': 'gasp',
-            '4': 'tada',
-            '5': 'victory',
-            '6': 'wrong'
-        };
-        
-        const soundName = keyMap[event.key];
-        if (soundName) {
-            const sound = sounds.find(s => s.name === soundName);
-            if (sound) {
-                toggleSound(soundName, sound.icon);
-            }
-        }
-        
-        // Spacebar to stop all sounds
-        if (event.code === 'Space') {
-            event.preventDefault(); // Prevent space from scrolling page
-            stopAllSounds();
-        }
-    });
+    // Update volume display
+    function updateVolumeDisplay() {
+        volumeValue.textContent = `${parseInt(volume * 100)}%`;
+    }
     
-    // Display keyboard shortcut info
-    console.log("Keyboard shortcuts:");
-    console.log("1-6: Play sounds 1-6");
-    console.log("Space: Stop all sounds");
+    // Helper function to darken a color
+    function darkenColor(color, percent) {
+        // Convert hex to RGB
+        let r = parseInt(color.slice(1, 3), 16);
+        let g = parseInt(color.slice(3, 5), 16);
+        let b = parseInt(color.slice(5, 7), 16);
+        
+        // Darken
+        r = Math.floor(r * (100 - percent) / 100);
+        g = Math.floor(g * (100 - percent) / 100);
+        b = Math.floor(b * (100 - percent) / 100);
+        
+        // Convert back to hex
+        return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+    }
+    
+    // Test function to check if sound files exist
+    function testSoundFiles() {
+        console.log('Testing sound files...');
+        sounds.forEach(sound => {
+            const audio = new Audio();
+            audio.src = `sounds/${sound.id}.mp3`;
+            
+            audio.addEventListener('canplaythrough', () => {
+                console.log(`✓ ${sound.name} sound file is accessible`);
+            });
+            
+            audio.addEventListener('error', () => {
+                console.warn(`✗ ${sound.name} sound file not found or inaccessible`);
+            });
+        });
+    }
+    
+    // Initialize visualizer animation
+    function initVisualizer() {
+        const bars = visualizer.querySelectorAll('.bar');
+        bars.forEach((bar, index) => {
+            bar.style.animationDelay = `${index * 0.1}s`;
+        });
+    }
+    
+    // Add CSS for active button animation
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes buttonPulse {
+            0%, 100% { box-shadow: 0 0 20px currentColor; }
+            50% { box-shadow: 0 0 40px currentColor; }
+        }
+        
+        .btn.active {
+            animation: buttonPulse 1.5s infinite;
+        }
+    `;
+    document.head.appendChild(style);
+    
+    // Initialize everything when DOM is loaded
+    init();
+    initVisualizer();
+    
+    // Test sound files after a short delay
+    setTimeout(testSoundFiles, 1000);
+    
+    // Log keyboard shortcuts
+    console.log('Keyboard Shortcuts:');
+    console.log('• 1-6: Play sounds 1-6');
+    console.log('• Space/Escape: Stop all sounds');
+    console.log('• Arrow Up/Down: Adjust volume');
+    
+    // Export functions for debugging
+    window.soundbar = {
+        playSound,
+        stopAllSounds,
+        getSounds: () => sounds,
+        getCurrentSound: () => currentSoundId
+    };
 });
